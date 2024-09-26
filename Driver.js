@@ -1,14 +1,15 @@
-const fs = require("fs-extra");
-const path = require("node:path");
-const Jimp = require("jimp");
-const stream = require("node:stream");
-const archiver = require("archiver");
-const uuid = require("uuid");
-const express = require("express");
-const unzipper = require("unzipper");
-const events = require("node:events");
-const upath = require("upath");
-const { Writable, Readable, Stream } = require("node:stream");
+import fs from "fs-extra";
+import path from "node:path";
+import { Jimp } from "jimp";
+import stream from "node:stream";
+import archiver from "archiver";
+import * as uuid from "uuid";
+import express from "express";
+import unzipper from "unzipper";
+import events from "node:events";
+import upath from "upath";
+import { Writable, Readable, Stream } from "node:stream";
+import { Volume, Cache, utils, errors, constants } from "./internal.js";
 
 const THUMBNAIL_SIZE = 48;
 const MAX_MEDIA_CHUNK = 1024 * 1000 * 4; // 4 MB
@@ -17,7 +18,6 @@ const MAX_MEDIA_CHUNK = 1024 * 1000 * 4; // 4 MB
 /** @typedef {string} ID */
 
 class Driver extends events.EventEmitter {
-	cache = new Cache();
 	initialized = false;
 
 	get elfinder() { return this.volume.elfinder; }
@@ -34,6 +34,8 @@ class Driver extends events.EventEmitter {
 		super();
 		this.volume = volume;
 		this.taskid = taskid;
+		this.cache = new Cache();
+		
 		var req = this.volume.elfinder.requests[taskid];
 		if (req) {
 			req.on("abort", ()=>{
@@ -60,7 +62,7 @@ class Driver extends events.EventEmitter {
 			name: this.volume.name,
 			parent: null,
 			size: 0,
-			mime: Volume.DIRECTORY,
+			mime: constants.DIRECTORY,
 			ts: 0,
 			exists: true,
 		};
@@ -120,10 +122,10 @@ class Driver extends events.EventEmitter {
 		data.locked = !!(permissions.locked && (stat.parent && (await this.stat(stat.parent)).writable === false));
 		if (isroot) {
 			data.dirs = 1;
-		} else if (data.mime === Volume.DIRECTORY && this.volume.config.subdirs) {
+		} else if (data.mime === constants.DIRECTORY && this.volume.config.subdirs) {
 			var items = await this.readdir(id);
 			for (var sid of items) {
-				if (((await this.stat(sid))||{}).mime === Volume.DIRECTORY) {
+				if (((await this.stat(sid))||{}).mime === constants.DIRECTORY) {
 					data.dirs = 1;
 					break;
 				}
@@ -168,7 +170,7 @@ class Driver extends events.EventEmitter {
 				}
 				res.status(206);
 				res.setHeader("Content-Range", `bytes ${start}-${end}/${stat.size}`);
-				res.setHeader("Content-Length", chunk);
+				// res.setHeader("Content-Length", chunk); // this results in multiple 'Parse Error: Expected HTTP/' errors, not necessary I guess!
 				readopts = {start, end: end+1};
 			} else {
 				res.setHeader("Content-Length", stat.size);
@@ -201,7 +203,7 @@ class Driver extends events.EventEmitter {
 	async walk(id, cb) {
 		var all = [];
 		const walk = async (id, cb, parents=[])=>{
-			if (this.aborted) throw new AbortException;
+			if (this.aborted) throw new errors.AbortException;
 			var files = await this.readdir(id);
 			var stats = {};
 			for (var cid of files) {
@@ -209,8 +211,8 @@ class Driver extends events.EventEmitter {
 				if (stat) stats[cid] = stat;
 			}
 			files.sort((a,b)=>{
-				var adir = stats[a].mime===Volume.DIRECTORY?1:0;
-				var bdir = stats[b].mime===Volume.DIRECTORY?1:0;
+				var adir = stats[a].mime===constants.DIRECTORY?1:0;
+				var bdir = stats[b].mime===constants.DIRECTORY?1:0;
 				if (adir > bdir) return -1;
 				if (adir < bdir) return 1;
 				if (stats[a].name < stats[b].name) return -1;
@@ -220,7 +222,7 @@ class Driver extends events.EventEmitter {
 			for (var cid of files) {
 				var stat = stats[cid];
 				all.push((cb && cb(cid, stat, [...parents, id])) ?? id);
-				if (stat.mime === Volume.DIRECTORY) await walk(cid, cb, [...parents, id]);
+				if (stat.mime === constants.DIRECTORY) await walk(cid, cb, [...parents, id]);
 			}
 		}
 		await walk(id, cb);
@@ -229,7 +231,7 @@ class Driver extends events.EventEmitter {
 
 	/** @param {ID[]} ids @return {string} */
 	async archivetmp(ids) {
-		var tmpdst = path.join(this.elfinder.tmpdir, uuid.v4()+".zip");
+		var tmpdst = path.join(this.elfinder.tmp_dir, uuid.v4()+".zip");
 		const writable = fs.createWriteStream(tmpdst);
 		this.register_stream(writable);
 		await new Promise(async (resolve,reject)=>{
@@ -241,7 +243,7 @@ class Driver extends events.EventEmitter {
 				var stat = await this.stat(id);
 				if (!stat) return;
 				var name = dir ? `${dir}/${stat.name}` : stat.name;
-				if (stat.mime === Volume.DIRECTORY) {
+				if (stat.mime === constants.DIRECTORY) {
 					archive.append(null, { name: `${name}/` });
 					for (var sfile of await this.readdir(id)) {
 						await append(sfile, name);
@@ -268,7 +270,7 @@ class Driver extends events.EventEmitter {
 
 	/** @param {ID} dstid @return {string} */
 	async extracttmp(archiveid) {
-		var tmpdst = path.join(this.elfinder.tmpdir, uuid.v4());
+		var tmpdst = path.join(this.elfinder.tmp_dir, uuid.v4());
 		await fs.mkdir(tmpdst)
 		var archivestream = await this.read(archiveid);
 		await new Promise(resolve=>{
@@ -306,11 +308,11 @@ class Driver extends events.EventEmitter {
 				/** @type {Jimp} */
 				var img = await Jimp.read(await utils.streamToBuffer(await this.read(id))).catch(()=>null); // catch if cnanot read file (e.g. psds)
 				if (img) {
-					img = await img.cover(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+					img = await img.cover({w:THUMBNAIL_SIZE, h:THUMBNAIL_SIZE});
 				} else {
 					return null;
 				}
-				await img.writeAsync(tmbpath).catch(()=>null); // catch if cannot save (e.g. path too long)
+				await img.write(tmbpath).catch(()=>null); // catch if cannot save (e.g. path too long)
 			} else {
 				return "1";
 			}
@@ -422,52 +424,52 @@ class Driver extends events.EventEmitter {
 	// -------------------------------------------------------------
 
 	/** @return {Promise<void>} */
-	async __init() { throw new NotImplementedException; }
+	async __init() { throw new errors.NotImplementedException; }
 
 	/** @return {Promise<void>} */
-	async __config() { throw new NotImplementedException; }
+	async __config() { throw new errors.NotImplementedException; }
 
 	/** @return {Promise<void>} */
-	async __destroy() { throw new NotImplementedException; }
+	async __destroy() { throw new errors.NotImplementedException; }
 
 	/** @param {ID} id @return {Promise<string>} */
-	async __uri(id) { throw new NotImplementedException; }
+	async __uri(id) { throw new errors.NotImplementedException; }
 
 	/** @param {ID} id @return {Promise<void>} */
-	async __fix_permissions(id) { throw new NotImplementedException; }
+	async __fix_permissions(id) { throw new errors.NotImplementedException; }
 
 	/** @param {ID} id @return {Promise<Stat>} */
-	async __stat(id) { throw new NotImplementedException; }
+	async __stat(id) { throw new errors.NotImplementedException; }
 
 	/** @param {ID} srcid @param {ID} dstid @param {string} name @return {Promise<ID>} */
-	async __move(srcid, dstid, name) { throw new NotImplementedException; }
+	async __move(srcid, dstid, name) { throw new errors.NotImplementedException; }
 
 	/** @param {ID} srcid @param {string} newname @return {Promise<ID>} */
-	async __rename(srcid, newname) { throw new NotImplementedException; }
+	async __rename(srcid, newname) { throw new errors.NotImplementedException; }
 
 	/** @param {ID} srcid @param {ID} dstid @param {string} name @return {Promise<ID>} */
-	async __copy(srcid, dstid, name) { throw new NotImplementedException; }
+	async __copy(srcid, dstid, name) { throw new errors.NotImplementedException; }
 
 	/** @param {ID} srcid @param {string} mode @return {Promise<ID>} */
-	async __chmod(srcid, mode) { throw new NotImplementedException; }
+	async __chmod(srcid, mode) { throw new errors.NotImplementedException; }
 
 	/** @param {ID} srcid @return {Promise<void>} */
-	async __rm(srcid) { throw new NotImplementedException; }
+	async __rm(srcid) { throw new errors.NotImplementedException; }
 
 	/** @param {ID} srcid @param {any} options @return {Promise<stream.Readable>} */
-	async __read(srcid, options) { throw new NotImplementedException; }
+	async __read(srcid, options) { throw new errors.NotImplementedException; }
 
 	/** @param {ID} srcid @return {Promise<ID[]>} */
-	async __readdir(srcid) { throw new NotImplementedException; }
+	async __readdir(srcid) { throw new errors.NotImplementedException; }
 
 	/** @param {ID} dirid @param {string} name @param {stream.Readable|Buffer|string} data @return {Promise<ID>} */
-	async __write(dirid, name, data) { throw new NotImplementedException; }
+	async __write(dirid, name, data) { throw new errors.NotImplementedException; }
 
 	/** @param {ID} dirid @param {string} name @return {Promise<ID>} */
-	async __mkdir(dirid, name) { throw new NotImplementedException; }
+	async __mkdir(dirid, name) { throw new errors.NotImplementedException; }
 
 	/** @param {string} tmpfile @param {ID} dstdir @param {string} filename @return {Promise<ID>} */
-	async __upload(tmpfile, dstdir, filename) { throw new NotImplementedException; }
+	async __upload(tmpfile, dstdir, filename) { throw new errors.NotImplementedException; }
 
 	/** @param {ID} id @return {ID} */
 	__abspath(id) { return this.id + this.volume.config.separator + id; }
@@ -480,7 +482,7 @@ class Driver extends events.EventEmitter {
 					"application/zip"
 				],
 				extract: [
-				  "application/zip",
+				  	"application/zip",
 				],
 				createext: {
 					"application/zip": "zip"
@@ -495,9 +497,4 @@ class Driver extends events.EventEmitter {
 	}
 }
 
-module.exports = Driver;
-
-const utils = require("./utils");
-const {NotImplementedException, ErrCmdParams, AbortException} = require("./errors");
-const Volume = require("./Volume");
-const Cache = require("./Cache");
+export default Driver;

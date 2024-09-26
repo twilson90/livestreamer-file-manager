@@ -1,20 +1,19 @@
-const fs = require("fs-extra");
-const path = require("node:path");
-const upath = require("upath");
-const Jimp = require("jimp");
-const uuid = require("uuid");
-const express = require("express");
-const encoding = require("encoding-japanese");
-const axios = require("axios").default;
-const sanitize = require("sanitize-filename");
-const dataUriToBuffer = require("data-uri-to-buffer");
-const mime = require("mime");
-const https = require("node:https");
+import fs from "fs-extra";
+import path from "node:path";
+import upath from "upath";
+import { Jimp } from "jimp";
+import * as uuid from "uuid";
+import express from "express";
+import encoding from "encoding-japanese";
+import axios from "axios";
+import sanitize from "sanitize-filename";
+import dataUriToBuffer from "data-uri-to-buffer";
+import mime from "mime";
+import https from "node:https";
+import { Driver, utils, errors, constants, ElFinder } from "./internal.js";
 
 const API_VERSION = "2.161";
 // const API_VERSION = "2.1";
-const DIRECTORY = "directory"
-const LOCAL_FILE_SYSTEM = "LocalFileSystem";
 
 class Volume {
 	get root() { return this.config.root; }
@@ -36,8 +35,9 @@ class Volume {
 		});
 	}
 
-	/** @param {import("./elfinder")} elfinder @param {*} config */
+	/** @param {ElFinder} elfinder @param {*} config */
 	constructor(elfinder, config) {
+		/** @type {ElFinder} */
 		this.elfinder = elfinder;
 		this.config = {
 			id: null,
@@ -79,8 +79,8 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async archive(opts, res) {
-		if (!opts.targets || opts.targets.length == 0) throw new ErrCmdParams();
-		if (!opts.type) throw new ErrCmdParams();
+		if (!opts.targets || opts.targets.length == 0) throw new errors.ErrCmdParams();
+		if (!opts.type) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var ids = opts.targets.map(t=>driver.unhash(t).id);
 			var ext = "."+mime.getExtension(opts.type);
@@ -102,8 +102,8 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async chmod(opts, res) {
-		if (!opts.targets || opts.targets.length == 0) throw new ErrCmdParams();
-		if (!opts.mode) throw new ErrCmdParams();
+		if (!opts.targets || opts.targets.length == 0) throw new errors.ErrCmdParams();
+		if (!opts.mode) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var ids = opts.targets.map(t=>driver.unhash(t).id);
 			var changed = [];
@@ -124,7 +124,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async dim(opts, res) {
-		if (!opts.target) throw new ErrCmdParams();
+		if (!opts.target) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var id = driver.unhash(opts.target).id;
 			var img = await Jimp.read(await utils.streamToBuffer(await driver.read(id)));
@@ -142,7 +142,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async duplicate(opts, res) {
-		if (!opts.targets || opts.targets.length == 0) throw new ErrCmdParams();
+		if (!opts.targets || opts.targets.length == 0) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var ids = opts.targets.map(t=>driver.unhash(t).id);
 			var added = [];
@@ -167,7 +167,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async extract(opts, res) {
-		if (!opts.target) throw new ErrCmdParams();
+		if (!opts.target) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var id = driver.unhash(opts.target).id;
 			var stat = await driver.stat(id);
@@ -202,7 +202,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async file(opts, res) {
-		if (!opts.target) throw new ErrCmdParams();
+		if (!opts.target) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var id = driver.unhash(opts.target).id;
 			var stat = await driver.stat(id);
@@ -226,7 +226,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async get(opts, res) {
-		if (!opts.target) throw new ErrCmdParams();
+		if (!opts.target) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var id = driver.unhash(opts.target).id;
 			var buffer = await utils.streamToBuffer(await driver.read(id));
@@ -257,7 +257,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async info(opts, res) {
-		if (!opts.targets || opts.targets.length == 0) throw new ErrCmdParams();
+		if (!opts.targets || opts.targets.length == 0) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var ids = opts.targets.map(hash=>driver.unhash(hash).id);
 			var files = [];
@@ -278,7 +278,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async ls(opts, res) {
-		if (!opts.target) throw new ErrCmdParams();
+		if (!opts.target) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var id = driver.unhash(opts.target).id;
 			var ids = await driver.readdir(id);
@@ -305,7 +305,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async mkdir(opts, res) {
-		if (!opts.target) throw new ErrCmdParams();
+		if (!opts.target) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var id = driver.unhash(opts.target).id;
 			var added = [];
@@ -342,8 +342,8 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async mkfile(opts, res) {
-		if (!opts.target) throw new ErrCmdParams();
-		if (!opts.name) throw new ErrCmdParams();
+		if (!opts.target) throw new errors.ErrCmdParams();
+		if (!opts.name) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var id = driver.unhash(opts.target).id;
 			var newid = await driver.write(id, opts.name || "Untitled.txt", Buffer.alloc(0));
@@ -373,7 +373,7 @@ class Volume {
 				if (!target) target = driver.hash("/");
 				data.uplMaxSize = "32M"; // max chunk size
 			}
-			if (!target) throw new ErrCmdParams();
+			if (!target) throw new errors.ErrCmdParams();
 			var {id} = driver.unhash(target);
 			var cwd = await driver.file(id);
 			if (!cwd) cwd = await driver.file("/");
@@ -411,7 +411,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async parents(opts, res) {
-		if (!opts.target) throw new ErrCmdParams();
+		if (!opts.target) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var id = driver.unhash(opts.target).id;
 			var curr = id;
@@ -424,7 +424,7 @@ class Volume {
 				var ids = await driver.readdir(curr);
 				for (var id of ids) {
 					var stat = await driver.stat(id);
-					if (stat.mime === DIRECTORY) tree.push(await driver.file(id));
+					if (stat.mime === constants.DIRECTORY) tree.push(await driver.file(id));
 				}
 			} while (curr && curr !== until && last !== curr);
 			return {
@@ -445,8 +445,8 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async paste(opts, res) {
-		if (!opts.targets || opts.targets.length == 0) throw new ErrCmdParams();
-		if (!opts.dst) throw new ErrCmdParams();
+		if (!opts.targets || opts.targets.length == 0) throw new errors.ErrCmdParams();
+		if (!opts.dst) throw new errors.ErrCmdParams();
 		var dst = this.elfinder.unhash(opts.dst);
 		var srcs = opts.targets.map(t=>this.elfinder.unhash(t));
 		var removed = [];
@@ -457,7 +457,7 @@ class Volume {
 				await src.volume.driver(opts.reqid, async (srcdriver)=>{
 					var newfile;
 					var same_volume = src.volume === dst.volume;
-					var both_localfilesystem = src.volume.driver_name === LOCAL_FILE_SYSTEM && dst.volume.driver_name === LOCAL_FILE_SYSTEM
+					var both_localfilesystem = src.volume.driver_name === "LocalFileSystem" && dst.volume.driver_name === "LocalFileSystem"
 					if (same_volume || both_localfilesystem) {
 						var stat = await srcdriver.stat(src.id);
 						var name = stat.name;
@@ -510,7 +510,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async put(opts, res) {
-		if (!opts.target) throw new ErrCmdParams();
+		if (!opts.target) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var id = driver.unhash(opts.target).id;
 			var {parent, name} = await driver.stat(id);
@@ -542,8 +542,8 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async rename(opts, res) {
-		if (!opts.target) throw new ErrCmdParams();
-		if (!opts.name) throw new ErrCmdParams();
+		if (!opts.target) throw new errors.ErrCmdParams();
+		if (!opts.name) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var id = driver.unhash(opts.target).id;
 			var dstid = await driver.rename(id, opts.name);
@@ -571,7 +571,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async resize(opts, res) {
-		if (!opts.target) throw new ErrCmdParams();
+		if (!opts.target) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var id = driver.unhash(opts.target).id;
 			var stat = await driver.stat(id);
@@ -585,7 +585,7 @@ class Volume {
 				if (opts.bg) img = img.background(parseInt(opts.bg.substr(1, 6), 16));
 			}
 			img = img.quality(+opts.quality);
-			await driver.write(stat.parent, stat.name, await img.getBufferAsync(Jimp.AUTO));
+			await driver.write(stat.parent, stat.name, await img.getBuffer('image/webp', { quality: 80 }));
 			var info = await driver.file(id);
 			info.tmb = 1;
 			return {
@@ -600,7 +600,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async rm(opts, res) {
-		if (!opts.targets || opts.targets.length == 0) throw new ErrCmdParams();
+		if (!opts.targets || opts.targets.length == 0) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var ids = opts.targets.map(t=>driver.unhash(t).id);
 			for (var target of ids) {
@@ -621,14 +621,14 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async search(opts, res) {
-		if (!opts.q || opts.q.length < 1) throw new ErrCmdParams();
+		if (!opts.q || opts.q.length < 1) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var id = opts.target ? driver.unhash(opts.target).id : "/";
 			var allids = await driver.walk(id);
 			var files = []
 			for (var id of allids) {
 				var stat = await driver.stat(id);
-				if (stat.name.indexOf(opts.q)>-1) {
+				if (stat.name.toLowerCase().includes(opts.q.toLowerCase())) {
 					files.push(await driver.file(id));
 				}
 			}
@@ -644,7 +644,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async size(opts, res) {
-		if (!opts.targets || opts.targets.length == 0) throw new ErrCmdParams();
+		if (!opts.targets || opts.targets.length == 0) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var ids = opts.targets.map(t=>driver.unhash(t).id);
 			var size = 0
@@ -655,7 +655,7 @@ class Volume {
 				var s = 0;
 				var check = async (id)=>{
 					var stat = await driver.stat(id);
-					if (stat.mime === DIRECTORY) {
+					if (stat.mime === constants.DIRECTORY) {
 						dirCnt++;
 						for (var cid of await driver.readdir(id)) {
 							await check(cid);
@@ -684,7 +684,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async subdirs(opts, res) {
-		if (!opts.targets || opts.targets.length == 0) throw new ErrCmdParams();
+		if (!opts.targets || opts.targets.length == 0) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var ids = opts.targets.map(t=>driver.unhash(t).id);
 			var subdirs = [];
@@ -693,7 +693,7 @@ class Volume {
 				var subdir = 0;
 				for (var cid of cids) {
 					var stat = await driver.stat(cid)
-					if (stat.mime === DIRECTORY) {
+					if (stat.mime === constants.DIRECTORY) {
 						subdir = 1
 						break;
 					}
@@ -712,7 +712,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async tmb(opts, res) {
-		if (!opts.targets || opts.targets.length == 0) throw new ErrCmdParams();
+		if (!opts.targets || opts.targets.length == 0) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var images = {};
 			for (var hash of opts.targets) {
@@ -731,14 +731,14 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async tree(opts, res) {
-		if (!opts.target) throw new ErrCmdParams();
+		if (!opts.target) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var target = driver.unhash(opts.target).id;
 			var ids = await driver.readdir(target);
 			var tree = [];
 			for (var id of ids) {
 				var stat = await driver.stat(id);
-				if (stat.mime === DIRECTORY) {
+				if (stat.mime === constants.DIRECTORY) {
 					tree.push(await driver.file(id));
 				}
 			}
@@ -768,7 +768,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async upload(opts, res) {
-		if (!opts.target) throw new ErrCmdParams();
+		if (!opts.target) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var dirid = driver.unhash(opts.target).id;
 			var added = [];
@@ -791,7 +791,7 @@ class Volume {
 				if (files.length > 1) throw new Error("Something unexpected [files.length]...");
 				var uploads = this.elfinder.uploads;
 				var cid = utils.md5(JSON.stringify([opts.cid, filename, total, opts.mtime, opts.upload_path]));
-				var chunkdir = path.join(this.elfinder.uploadsdir, `${cid}_chunks`);
+				var chunkdir = path.join(this.elfinder.uploads_dir, `${cid}_chunks`);
 				await fs.mkdir(chunkdir, {recursive:true});
 				var tmpchunkpath = path.join(chunkdir, String(ci));
 				await fs.rename(files[0].path, tmpchunkpath);
@@ -802,7 +802,7 @@ class Volume {
 				uploads[cid][ci] = true;
 				if (uploads[cid].length == cn && uploads[cid].every(c=>c)) {
 					var mergedname = cid;
-					var mergedpath = path.join(this.elfinder.uploadsdir, cid);
+					var mergedpath = path.join(this.elfinder.uploads_dir, cid);
 					var chunks = uploads[cid].map((_,i)=>path.join(chunkdir, String(i)));
 					await utils.mergefiles(chunks, mergedpath);
 					var stat = await fs.stat(mergedpath);
@@ -834,7 +834,7 @@ class Volume {
 				} else if (opts.chunk) {
 					if (opts.upload.length > 1) throw new Error("Something unexpected [upload.length]...");
 					files.push(...opts.upload.map(n=>({
-						path: path.join(this.elfinder.uploadsdir, opts.chunk),
+						path: path.join(this.elfinder.uploads_dir, opts.chunk),
 						originalname: n,
 					})));
 				}
@@ -869,7 +869,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async url(opts, res) {
-		if (!opts.target) throw new ErrCmdParams();
+		if (!opts.target) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			var id = driver.unhash(opts.target).id;
 			return [this.config.URL, id].join("/")
@@ -883,7 +883,7 @@ class Volume {
 	 * @param {express.Response} res
 	 */
 	async zipdl(opts, res) {
-		if (!opts.targets || opts.targets.length == 0) throw new ErrCmdParams();
+		if (!opts.targets || opts.targets.length == 0) throw new errors.ErrCmdParams();
 		return this.driver(opts.reqid, async (driver)=>{
 			if (opts.download) {
 				var [hash, tmp, name, mime] = opts.targets;
@@ -891,7 +891,7 @@ class Volume {
 				res.setHeader("Content-Disposition", `attachment;filename="${name.replace(/"/g,'\\"')}"`);
 				res.setHeader("Accept-Ranges", "none");
 				res.setHeader("Connection", "close");
-				tmp = path.join(this.elfinder.tmpdir, tmp)
+				tmp = path.join(this.elfinder.tmp_dir, tmp)
 				await new Promise((resolve,reject)=>{
 					res.sendFile(tmp, async (e)=>{
 						await fs.unlink(tmp);
@@ -942,10 +942,4 @@ class Volume {
 		});
 	}
 }
-module.exports = Volume;
-module.exports.DIRECTORY = DIRECTORY;
-
-const utils = require("./utils");
-const {NotImplementedException, ErrCmdParams} = require("./errors");
-const Driver = require("./Driver");
-
+export default Volume;

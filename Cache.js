@@ -5,4 +5,4 @@ class Cache {
     dirs = {};
 }
 
-module.exports = Cache;
+export default Cache;

@@ -1,6 +1,7 @@
 import {WindowCommunicator} from "@hedgehog90/utils/dom";
 // import "@hedgehog90/utils/dom/style.css"; // not necessary
 import "./extra-style.scss";
+
 $(async()=>{
 	var is_iframe = window.self !== window.top;
 	var params = new URLSearchParams(window.location.search);

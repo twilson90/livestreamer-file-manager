@@ -1,32 +1,29 @@
-const express = require("express");
-const path = require("node:path");
-const Volume = require("./Volume");
-const core = require("@livestreamer/core");
-const App = require("@livestreamer/core/App");
-const utils  = require("@livestreamer/core/utils");
-const WebServer = require("@livestreamer/core/WebServer");
+import express from "express";
+import path from "node:path";
+import compression from "compression";
+import core, { WebServer } from "@livestreamer/core";
+import { Volume, ElFinder, constants } from "./internal.js";
 
 /** @typedef {{name:string, isdir:boolean, children:TreeNode[]}} TreeNode */
 
-class FileManagerApp extends App {
+const __dirname = import.meta.dirname;
 
-    constructor(){
-        super("file-manager");
-    }
+class FileManagerApp {
 
-    init() {
+    async init() {
         const exp = express();
 
         this.web = new WebServer(exp, {
             auth: true
         });
         
-        exp.use("/", require("compression")({threshold:0}), express.static(path.resolve(__dirname, `public_html`)));
+        exp.use("/", compression({threshold:0}), express.static(path.resolve(__dirname, `public_html`)));
         
         this.elFinder = new ElFinder(exp, {
             volumes: core.conf["file-manager.volumes"],
             // key: core.conf["file-manager.key"]
         });
+        await this.elFinder.init();
 
         this.elFinder.commands.add("listtree");
         
@@ -34,9 +31,9 @@ class FileManagerApp extends App {
 			res.json(configs);
 		}); */
 
-        core.on("main.connected", ()=>{
-            core.ipc_send("main", "update_volumes", Object.fromEntries(Object.entries(this.elFinder.volumes).map(([k,v])=>[k,v.config])));
-        });
+        var broadcast = ()=>core.ipc_broadcast("file-manager.update-volumes", Object.fromEntries(Object.entries(this.elFinder.volumes).map(([k,v])=>[k,v.config])));
+        broadcast();
+        core.on("main.connected", broadcast);
     }
     async destroy(){
         await this.web.destroy();
@@ -59,7 +56,7 @@ Volume.prototype.listtree = async function(opts, res) {
         //     nodes[target] = {name:this.name, isdir:true};
         //     await driver.walk(target, (id, stat, parents=[])=>{
         //         var parent = parents[parents.length-1];
-        //         var isdir = stat.mime===Volume.DIRECTORY;
+        //         var isdir = stat.mime===constants.DIRECTORY;
         //         var name = stat.name;
         //         nodes[id] = {name, isdir};
         //         if (parent) {
@@ -80,7 +77,8 @@ Volume.prototype.listtree = async function(opts, res) {
     });
 }
 
-const app = module.exports = new FileManagerApp();
-core.register(app);
+const app = new FileManagerApp();
+core.init("file-manager", app);
 
-const ElFinder = require("./elfinder");
+export default app;
+export * from "./internal.js";

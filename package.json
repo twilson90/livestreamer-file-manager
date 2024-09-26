@@ -1,11 +1,13 @@
 {
-  "name": "@livestreamer/elfinder",
+  "name": "@livestreamer/file-manager",
   "version": "1.0.0",
+  "type": "module",
   "main": "index.js",
-  "author": "",
+  "author": "Tom Wilson",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@livestreamer/core": "file:../core",
     "archiver": "^7.0.1",
     "axios": "^1.7.7",
     "body-parser": "^1.20.3",

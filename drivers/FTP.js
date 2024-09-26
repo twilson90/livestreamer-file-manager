@@ -1,10 +1,9 @@
-const upath = require("upath");
-const mime = require("mime-types");
-const fs = require("fs-extra");
-const stream = require("node:stream");
-const ftp = require("basic-ftp")
-const Volume = require("../Volume");
-const Driver = require("../Driver");
+import upath from "upath";
+import mime from "mime-types";
+import fs from "fs-extra";
+import stream from "node:stream";
+import ftp from "basic-ftp"
+import { Volume, Driver, constants } from "../internal.js";
 
 /** @inheritDoc */
 class FTP extends Driver {
@@ -53,7 +52,7 @@ class FTP extends Driver {
                 name: info.name,
                 parent: src,
                 size: info.size,
-                mime: (info.type == 2) ? Volume.DIRECTORY : mime.lookup(id),
+                mime: (info.type == 2) ? constants.DIRECTORY : mime.lookup(id),
                 ts: +info.modifiedAt,
                 exists: true,
             }
@@ -90,7 +89,7 @@ class FTP extends Driver {
     }
     async __rm(src) {
         var stat = await this.stat(src);
-        if (stat.mime === Volume.DIRECTORY) this.client.removeDir(src);
+        if (stat.mime === constants.DIRECTORY) this.client.removeDir(src);
         else this.client.remove(src);
     }
     async __read(src, options) {
@@ -127,4 +126,4 @@ class FTP extends Driver {
         return dst;
     }
 }
-module.exports = FTP;
+export default FTP;

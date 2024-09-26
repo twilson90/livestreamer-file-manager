@@ -1,14 +1,9 @@
-const upath = require("upath");
-const path = require("node:path");
-const Mime = require("mime");
-const fs = require("fs-extra");
-const unzipper = require("unzipper");
-const stream = require("node:stream");
-const Driver = require("../Driver");
-const Volume = require("../Volume");
-const errors = require("../errors");
-
-const IS_WINDOWS = (process.platform === "win32");
+import upath from "upath";
+import path from "node:path";
+import Mime from "mime";
+import fs from "fs-extra";
+import stream from "node:stream";
+import { Volume, Driver, constants } from "../internal.js";
 
 /**
  * @inheritDoc
@@ -95,7 +90,7 @@ class LocalFileSystem extends Driver {
 				}
 			}
 			if (stat) {
-				if (stat.isDirectory() || is_root) mime = Volume.DIRECTORY;
+				if (stat.isDirectory() || is_root) mime = constants.DIRECTORY;
 				else mime = Mime.getType(id);
 			}
 			
@@ -156,4 +151,4 @@ class LocalFileSystem extends Driver {
 	}
 }
 
-module.exports = LocalFileSystem;
+export default LocalFileSystem;

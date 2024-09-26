@@ -1,18 +1,15 @@
-
-module.exports = {
-	NotImplementedException: class extends Error {
-		constructor() {
-			super("Not implemented.");
-		}
-	},
-	ErrCmdParams: class extends Error {
-		constructor() {
-			super("errCmdParams");
-		}
-	},
-	AbortException: class extends Error {
-		constructor() {
-			super("Command aborted.");
-		}
-	},
+export class NotImplementedException extends Error {
+	constructor() {
+		super("Not implemented.");
+	}
+}
+export class ErrCmdParams extends Error {
+	constructor() {
+		super("errCmdParams");
+	}
+}
+export class AbortException extends Error {
+	constructor() {
+		super("Command aborted.");
+	}
 }

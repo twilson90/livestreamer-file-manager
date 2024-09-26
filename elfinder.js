@@ -1,14 +1,15 @@
-const express = require("express");
-const path = require("node:path");
-const multer = require("multer");
-const os = require("node:os");
-const fs = require("fs-extra");
-const crypto = require("node:crypto");
-const bodyParser = require("body-parser");
-const core = require("@livestreamer/core");
+import express, { Router } from "express";
+import path from "node:path";
+import multer from "multer";
+import fs from "fs-extra";
+import crypto from "node:crypto";
+import bodyParser from "body-parser";
+import core from "@livestreamer/core";
+import { Volume, Driver, utils, errors, constants } from "./internal.js";
 
-var tid = 0;
-var callback_template = fs.readFileSync(path.join(__dirname,"callback-template.html"), "utf-8");
+
+const __dirname = import.meta.dirname;
+var callback_template = fs.readFileSync(path.join(__dirname, "callback-template.html"), "utf-8");
 
 class ElFinder {
 	/** @type {Object.<string,express.Request>} */
@@ -16,7 +17,7 @@ class ElFinder {
 	/** @type {Object.<string,Volume>} */
 	volumes = {};
 	/** @type {Object.<string,typeof Driver>} */
-	drivers = Object.fromEntries(fs.readdirSync(`${__dirname}/drivers`).map(name=>[path.basename(name, ".js"), require(`./drivers/${name}`)]));
+	drivers = {};
 	config;
 	/** @type {Object.<string,string[]>} */
 	uploads = {}
@@ -26,27 +27,26 @@ class ElFinder {
 	/** @param {Express} express @param {object} config */
 	constructor(express, config) {
 		this.commands = new Set(['abort','archive','callback','chmod','dim','duplicate','editor','extract','file','get','info','ls','mkdir','mkfile','netmount','open','parents','paste','put','rename','resize','rm','search','size','subdirs','tmb','tree','upload','url','zipdl']);
-		
-		this.appdatadir = path.join(os.tmpdir(), "elfinder");
-		this.uploadsdir = path.join(this.appdatadir, 'uploads');
-		this.tmbdir = path.join(this.appdatadir, 'tmb');
-		this.tmpdir = path.join(this.appdatadir, 'tmp');
-		fs.mkdirSync(this.tmbdir, {recursive:true});
-		fs.mkdirSync(this.uploadsdir, {recursive:true});
-		fs.emptyDirSync(this.uploadsdir);
-		fs.mkdirSync(this.tmpdir, {recursive:true});
-		fs.emptyDirSync(this.tmpdir);
+		this.appdata_dir = path.join(core.appdata_dir, "elfinder");
+		this.uploads_dir = path.join(this.appdata_dir, 'uploads');
+		this.thumbnails_dir = path.join(this.appdata_dir, 'tmb');
+		this.tmp_dir = path.join(this.appdata_dir, 'tmp');
+		fs.mkdirSync(this.thumbnails_dir, {recursive:true});
+		fs.mkdirSync(this.uploads_dir, {recursive:true});
+		fs.emptyDirSync(this.uploads_dir);
+		fs.mkdirSync(this.tmp_dir, {recursive:true});
+		fs.emptyDirSync(this.tmp_dir);
 
 		config = Object.assign({
-			tmbdir: this.tmbdir,
+			tmbdir: this.thumbnails_dir,
 		}, config)
 		
 		if (!config.volumes) config.volumes = [];
 		this.config = config;
 
-		var connector = `connector`
-		this.connector_url = `/${app.name}/${connector}/`;
-		var router = express.Router();
+		var connector = `connector`;
+		this.connector_url = `/${core.name}/${connector}/`;
+		var router = Router();
 
 		express.use(async (req, res, next) => {
 			var user = await core.authorise(req, res);
@@ -63,7 +63,7 @@ class ElFinder {
 			limit: '50mb',
 		}))
 		
-		var upload = multer({ dest: this.uploadsdir }).array("upload[]");
+		var upload = multer({ dest: this.uploads_dir }).array("upload[]");
 		router.post('/', upload, (req, res, next)=>{
 			this.exec(req, res);
 		});
@@ -104,6 +104,14 @@ class ElFinder {
 				});
 			}
 		});
+	}
+
+	async init() {
+		
+		var drivers = await fs.readdir(`${__dirname}/drivers`);
+		for (var d of drivers) {
+			this.drivers[path.basename(d, ".js")] = (await import(`./drivers/${d}`)).default;
+		}
 
 		this.config.volumes.forEach((v,i)=>{
 			if (typeof v === "string") v = {root:v};
@@ -118,7 +126,7 @@ class ElFinder {
 
 		this.tmpvolume = new Volume(this, {
 			driver: "LocalFileSystem",
-			root: this.tmpdir
+			root: this.tmp_dir
 		});
 	}
 
@@ -165,7 +173,7 @@ class ElFinder {
 		if (task) {
 			var result = await task.catch((e)=>{
 				var error;
-				if (e instanceof AbortException) {
+				if (e instanceof errors.AbortException) {
 					error = "Aborted";
 				} else if (e instanceof Error) {
 					console.error(e.stack);
@@ -223,7 +231,7 @@ class ElFinder {
 			var stat = await srcdriver.stat(srcid);
 			var newfileid, children;
 
-			if (stat.mime === Volume.DIRECTORY) {
+			if (stat.mime === constants.DIRECTORY) {
 				newfileid = await dstdriver.mkdir(dstid, stat.name);
 				children = await srcdriver.readdir(srcid);
 			} else {
@@ -233,7 +241,7 @@ class ElFinder {
 			var node = {
 				id: newfileid,
 				name:stat.name, 
-				isdir: stat.mime === Volume.DIRECTORY,
+				isdir: stat.mime === constants.DIRECTORY,
 				children: [],
 			}
 			if (children) {
@@ -271,7 +279,7 @@ class ElFinder {
 	 * @param {express.Response} res
 	 */
 	callback(opts, res) {
-		if (!opts.node) throw new ErrCmdParams();
+		if (!opts.node) throw new errors.ErrCmdParams();
         if (opts.done || !this.config.callbackWindowURL) {
 			var html = callback_template
 				.replace("[[node]]", JSON.stringify(opts.node))
@@ -300,8 +308,8 @@ class ElFinder {
 	 * @param {*} opts.args
 	 */
 	editor(opts) {
-		if (!opts.name) throw new ErrCmdParams();
-		if (!opts.method) throw new ErrCmdParams();
+		if (!opts.name) throw new errors.ErrCmdParams();
+		if (!opts.method) throw new errors.ErrCmdParams();
         var names = opts.name;
 		if (!Array.isArray(names)) names = [names];
 		var res = {};
@@ -332,8 +340,8 @@ class ElFinder {
 	 * @param {*} opts.options
 	 */
 	async netmount(opts) {
-		if (!opts.protocol) throw new ErrCmdParams();
-		if (!opts.host) throw new ErrCmdParams();
+		if (!opts.protocol) throw new errors.ErrCmdParams();
+		if (!opts.host) throw new errors.ErrCmdParams();
         var protocol = opts.protocol;
 		var config = opts.options || {};
 		delete opts.options;
@@ -364,10 +372,4 @@ class ElFinder {
 	}
 }
 
-module.exports = ElFinder;
-
-const app = require(".");
-const utils = require("./utils");
-const Volume = require("./Volume");
-const Driver = require("./Driver");
-const {NotImplementedException, ErrCmdParams, AbortException} = require("./errors");
+export default ElFinder;
