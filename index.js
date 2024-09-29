@@ -21,19 +21,12 @@ class FileManagerApp {
         
         this.elFinder = new ElFinder(exp, {
             volumes: core.conf["file-manager.volumes"],
-            // key: core.conf["file-manager.key"]
         });
         await this.elFinder.init();
 
         this.elFinder.commands.add("listtree");
-        
-		/* this.router.get('/volumes', async (req, res, next)=>{
-			res.json(configs);
-		}); */
 
-        var broadcast = ()=>core.ipc_broadcast("file-manager.update-volumes", Object.fromEntries(Object.entries(this.elFinder.volumes).map(([k,v])=>[k,v.config])));
-        broadcast();
-        core.on("main.connected", broadcast);
+        core.ipc.respond("volumes", ()=>Object.fromEntries(Object.entries(this.elFinder.volumes).map(([k,v])=>[k,v.config])));
     }
     async destroy(){
         await this.web.destroy();
