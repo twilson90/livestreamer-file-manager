@@ -16,6 +16,8 @@ class FileManagerApp {
         this.web = new WebServer(exp, {
             auth: true
         });
+
+        core.ipc.respond("volumes", ()=>Object.fromEntries(Object.entries(this.elFinder.volumes).map(([k,v])=>[k,v.config])));
         
         exp.use("/", compression({threshold:0}), express.static(path.resolve(__dirname, `public_html`)));
         
@@ -25,8 +27,6 @@ class FileManagerApp {
         await this.elFinder.init();
 
         this.elFinder.commands.add("listtree");
-
-        core.ipc.respond("volumes", ()=>Object.fromEntries(Object.entries(this.elFinder.volumes).map(([k,v])=>[k,v.config])));
     }
     async destroy(){
         await this.web.destroy();

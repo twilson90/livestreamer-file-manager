@@ -122,7 +122,8 @@ class Driver extends events.EventEmitter {
 		data.locked = !!(permissions.locked && (stat.parent && (await this.stat(stat.parent)).writable === false));
 		if (isroot) {
 			data.dirs = 1;
-		} else if (data.mime === constants.DIRECTORY && this.volume.config.subdirs) {
+		} else if (data.mime === constants.DIRECTORY) { //  && this.volume.config.subdirs
+			// data.dirs = 1;
 			var items = await this.readdir(id);
 			for (var sid of items) {
 				if (((await this.stat(sid))||{}).mime === constants.DIRECTORY) {
