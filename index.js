@@ -22,7 +22,10 @@ class FileManagerApp {
         exp.use("/", compression({threshold:0}), express.static(path.resolve(__dirname, `public_html`)));
         
         this.elFinder = new ElFinder(exp, {
-            volumes: core.conf["file-manager.volumes"],
+            volumes: [
+                core.files_dir,
+                ...core.conf["file-manager.volumes"]
+            ],
         });
         await this.elFinder.init();
 
